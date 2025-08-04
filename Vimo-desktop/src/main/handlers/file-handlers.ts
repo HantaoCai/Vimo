@@ -1,5 +1,7 @@
 import { dialog, ipcMain } from 'electron';
 import { readFile, writeFile, stat } from 'node:fs/promises';
+import axios from 'axios';
+import FormData from 'form-data';
 
 /**
  * Register all file-related IPC handlers
@@ -114,6 +116,40 @@ export function registerFileHandlers(): void {
       return { success: false, error: 'No files selected' };
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : String(error);
+      return { success: false, error: errorMessage };
+    }
+  });
+
+  // Upload video to server handler
+  ipcMain.handle('upload-video-to-server', async (_, filePath: string, fileName: string) => {
+    try {
+      console.log('🔄 Uploading video to server:', filePath);
+      
+      // Read file content
+      const fileBuffer = await readFile(filePath);
+      
+      // Create form data using form-data library
+      const form = new FormData();
+      form.append('file', fileBuffer, {
+        filename: fileName,
+        contentType: 'video/mp4'
+      });
+      
+      // Upload to server using axios
+      const response = await axios.post('http://192.168.1.132:64451/api/upload/video', form, {
+        headers: {
+          ...form.getHeaders(),
+        },
+        timeout: 300000 // 5 minutes timeout
+      });
+      
+      const result = response.data;
+      console.log('📡 Upload result:', result);
+      
+      return result;
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      console.error('❌ Upload error:', errorMessage);
       return { success: false, error: errorMessage };
     }
   });

@@ -9,7 +9,7 @@ interface UseVideoUploadProps {
 }
 
 export const useVideoUpload = ({ uploadedVideos, setUploadedVideos, onShowToast }: UseVideoUploadProps) => {
-  // Use Electron file selection API
+  // Use Electron file selection API and upload to server
   const handleVideoUpload = useCallback(async () => {
     try {
       const result = await window.api.selectVideoFiles();
@@ -25,19 +25,42 @@ export const useVideoUpload = ({ uploadedVideos, setUploadedVideos, onShowToast 
           if (isDuplicate) {
             duplicateFiles.push(file.name);
           } else {
-            const videoId = generateVideoId();
-            // Use file protocol to create URL for preview
-            const videoUrl = `file://${file.path}`;
+            try {
+              console.log('🔄 Starting file upload for:', file.name);
+              
+              // Use Electron API to read file and upload
+              console.log('📁 Reading file from:', file.path);
+              
+              // Create a new API endpoint for file upload through Electron
+              const uploadResult = await window.api.uploadVideoToServer(file.path, file.name);
+              console.log('📡 Upload result:', uploadResult);
+              
+              if (uploadResult.success) {
+                const videoId = generateVideoId();
+                // Use server file path if available, otherwise fall back to local path
+                const serverPath = uploadResult.file_path || file.path;
 
-            const newVideo: UploadedVideo = {
-              id: videoId,
-              name: file.name,
-              url: videoUrl,
-              path: file.path, // Real file path
-              size: file.size,
-            };
+                const newVideo: UploadedVideo = {
+                  id: videoId,
+                  name: file.name,
+                  url: `file://${file.path}`, // Keep local path for preview
+                  path: serverPath, // Use server path for processing
+                  size: file.size,
+                };
 
-            newVideos.push(newVideo);
+                newVideos.push(newVideo);
+              } else {
+                console.error('Failed to upload file:', uploadResult.error);
+                if (onShowToast) {
+                  onShowToast(`Failed to upload ${file.name}: ${uploadResult.error}`, 'error');
+                }
+              }
+            } catch (uploadError) {
+              console.error('Upload error:', uploadError);
+              if (onShowToast) {
+                onShowToast(`Failed to upload ${file.name}`, 'error');
+              }
+            }
           }
         }
 
@@ -60,7 +83,7 @@ export const useVideoUpload = ({ uploadedVideos, setUploadedVideos, onShowToast 
     } catch (error) {
       console.error('Error selecting video files:', error);
     }
-  }, [uploadedVideos, setUploadedVideos]);
+  }, [uploadedVideos, setUploadedVideos, onShowToast]);
 
   // Keep compatibility with drag and drop upload - currently not supported
   const handleVideoUploadFromFiles = useCallback(async () => {

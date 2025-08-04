@@ -203,3 +203,152 @@ openai_4o_mini_config = LLMConfig(
     caption_model_name = "qwen-vl-plus-latest",
     caption_model_max_async = 3
 )
+
+###### 阿里云通义千问 Configuration
+@retry(
+    stop=stop_after_attempt(5),
+    wait=wait_exponential(multiplier=1, min=4, max=10),
+    retry=retry_if_exception_type((RateLimitError, APIConnectionError)),
+)
+async def tongyi_embedding(model_name: str, texts: list[str], **kwargs) -> np.ndarray:
+    """阿里云通义千问文本嵌入"""
+    import httpx
+    
+    # 获取API密钥
+    api_key = kwargs.get("global_config", {}).get("tongyi_api_key")
+    if not api_key:
+        raise ValueError("Tongyi API key not found in global_config")
+    
+    # 构建请求
+    url = "https://dashscope.aliyuncs.com/api/v1/services/embeddings/text-embedding-v1/text-embedding"
+    headers = {
+        "Authorization": f"Bearer {api_key}",
+        "Content-Type": "application/json"
+    }
+    
+    embeddings = []
+    # 批量处理文本
+    for text in texts:
+        data = {
+            "model": "text-embedding-v1",
+            "input": text
+        }
+        
+        async with httpx.AsyncClient() as client:
+            response = await client.post(url, headers=headers, json=data, timeout=60.0)
+            response.raise_for_status()
+            result = response.json()
+            
+            if "output" in result and "embeddings" in result["output"]:
+                embedding = result["output"]["embeddings"][0]["embedding"]
+                embeddings.append(embedding)
+            else:
+                raise RuntimeError(f"Unexpected response format: {result}")
+    
+    return np.array(embeddings)
+
+@retry(
+    stop=stop_after_attempt(5),
+    wait=wait_exponential(multiplier=1, min=4, max=10),
+    retry=retry_if_exception_type((RateLimitError, APIConnectionError)),
+)
+async def tongyi_complete_if_cache(
+    model, prompt, system_prompt=None, history_messages=[], **kwargs
+) -> str:
+    """阿里云通义千问文本生成"""
+    import httpx
+    
+    # 获取API密钥
+    api_key = kwargs.get("global_config", {}).get("tongyi_api_key")
+    if not api_key:
+        raise ValueError("Tongyi API key not found in global_config")
+    
+    hashing_kv: BaseKVStorage = kwargs.pop("hashing_kv", None)
+    
+    # 构建消息
+    messages = []
+    if system_prompt:
+        messages.append({"role": "system", "content": system_prompt})
+    messages.extend(history_messages)
+    messages.append({"role": "user", "content": prompt})
+    
+    # 检查缓存
+    if hashing_kv is not None:
+        args_hash = compute_args_hash(model, messages)
+        if_cache_return = await hashing_kv.get_by_id(args_hash)
+        if if_cache_return is not None and if_cache_return["return"] is not None:
+            return if_cache_return["return"]
+    
+    # 构建请求
+    url = "https://dashscope.aliyuncs.com/api/v1/services/aigc/text-generation/generation"
+    headers = {
+        "Authorization": f"Bearer {api_key}",
+        "Content-Type": "application/json"
+    }
+    
+    data = {
+        "model": model,
+        "input": {
+            "messages": messages
+        },
+        "parameters": {
+            "temperature": kwargs.get("temperature", 0.7),
+            "max_tokens": kwargs.get("max_tokens", 4096)
+        }
+    }
+    
+    async with httpx.AsyncClient() as client:
+        response = await client.post(url, headers=headers, json=data, timeout=60.0)
+        response.raise_for_status()
+        result = response.json()
+        
+        if "output" in result and "text" in result["output"]:
+            content = result["output"]["text"]
+        else:
+            raise RuntimeError(f"Unexpected response format: {result}")
+    
+    # 保存到缓存
+    if hashing_kv is not None:
+        await hashing_kv.upsert(
+            {args_hash: {"return": content, "model": model}}
+        )
+        await hashing_kv.index_done_callback()
+    
+    return content
+
+async def tongyi_complete(model_name, prompt, system_prompt=None, history_messages=[], **kwargs) -> str:
+    """通义千问文本生成包装函数"""
+    return await tongyi_complete_if_cache(
+        model_name,
+        prompt,
+        system_prompt=system_prompt,
+        history_messages=history_messages,
+        **kwargs
+    )
+
+# 通义千问配置
+tongyi_config = LLMConfig(
+    embedding_func_raw = tongyi_embedding,
+    embedding_model_name = "text-embedding-v1",
+    embedding_dim = 1536,
+    embedding_max_token_size = 8192,
+    embedding_batch_num = 32,
+    embedding_func_max_async = 16,
+    query_better_than_threshold = 0.2,
+
+    # LLM        
+    best_model_func_raw = tongyi_complete,
+    best_model_name = "qwen-turbo",    
+    best_model_max_token_size = 32768,
+    best_model_max_async = 16,
+        
+    cheap_model_func_raw = tongyi_complete,
+    cheap_model_name = "qwen-turbo",
+    cheap_model_max_token_size = 32768,
+    cheap_model_max_async = 16,
+    
+    # Caption model (仍然使用DashScope)
+    caption_model_func_raw = dashscope_caption_complete,
+    caption_model_name = "qwen-vl-plus-latest",
+    caption_model_max_async = 3
+)

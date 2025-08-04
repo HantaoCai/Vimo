@@ -3,6 +3,30 @@ import os
 import certifi
 os.environ['SSL_CERT_FILE'] = certifi.where()
 os.environ['REQUESTS_CA_BUNDLE'] = certifi.where()
+
+# Configure proxy settings for external API calls
+def configure_proxy_settings():
+    """Configure proxy settings for external API calls"""
+    proxy_config = {}
+    
+    # Check for proxy environment variables
+    if os.environ.get('HTTP_PROXY'):
+        proxy_config['http'] = os.environ.get('HTTP_PROXY')
+    if os.environ.get('HTTPS_PROXY'):
+        proxy_config['https'] = os.environ.get('HTTPS_PROXY')
+    if os.environ.get('NO_PROXY'):
+        proxy_config['no_proxy'] = os.environ.get('NO_PROXY')
+    
+    # Set proxy environment variables for requests and httpx
+    if proxy_config:
+        log_to_file(f"🔧 Proxy configuration detected: {proxy_config}")
+        for key, value in proxy_config.items():
+            if key in ['http', 'https']:
+                os.environ[key.upper()] = value
+                os.environ[key.upper() + '_PROXY'] = value
+    
+    return proxy_config
+
 import time
 import threading
 import multiprocessing
@@ -26,8 +50,11 @@ import warnings
 warnings.filterwarnings("ignore")
 logging.getLogger("httpx").setLevel(logging.WARNING)
 
-from videorag._llm import LLMConfig, openai_embedding, gpt_complete, dashscope_caption_complete
+from videorag._llm import LLMConfig, tongyi_embedding, tongyi_complete, dashscope_caption_complete
 from videorag import VideoRAG, QueryParam
+
+# Configure proxy on module load
+PROXY_CONFIG = configure_proxy_settings()
 
 # Log recording function
 def log_to_file(message, log_file="log.txt"):
@@ -263,7 +290,7 @@ class HTTPImageBindClient:
             response = self.session.post(
                 f"{self.base_url}/api/imagebind/encode/video",
                 json={"video_batch": video_batch},
-                timeout=1800  # 30min timeout
+                timeout=3600  # 60min timeout (increased from 30min)
             )
             
             if response.status_code != 200:
@@ -291,7 +318,7 @@ class HTTPImageBindClient:
             response = self.session.post(
                 f"{self.base_url}/api/imagebind/encode/query",
                 json={"query": query},
-                timeout=1800  # 30min timeout
+                timeout=3600  # 60min timeout (increased from 30min)
             )
             
             if response.status_code != 200:
@@ -644,19 +671,19 @@ def index_video_worker_process(chat_id, video_path_list, global_config, server_u
         os.makedirs(session_working_dir, exist_ok=True)
         
         videorag_llm_config = LLMConfig(
-            embedding_func_raw=openai_embedding,
-            embedding_model_name="text-embedding-3-small",
+            embedding_func_raw=tongyi_embedding,  # 使用通义千问embedding
+            embedding_model_name="text-embedding-v1",
             embedding_dim=1536,
             embedding_max_token_size=8192,
             embedding_batch_num=32,
             embedding_func_max_async=16,
             query_better_than_threshold=0.2,
-            best_model_func_raw=gpt_complete,
-            best_model_name=global_config.get("analysisModel"),    
+            best_model_func_raw=tongyi_complete,  # 使用通义千问LLM
+            best_model_name="qwen-turbo",    
             best_model_max_token_size=32768,
             best_model_max_async=16,
-            cheap_model_func_raw=gpt_complete,
-            cheap_model_name=global_config.get("processingModel"),
+            cheap_model_func_raw=tongyi_complete,  # 使用通义千问LLM
+            cheap_model_name="qwen-turbo",
             cheap_model_max_token_size=32768,
             cheap_model_max_async=16,
             caption_model_func_raw=dashscope_caption_complete,
@@ -671,8 +698,8 @@ def index_video_worker_process(chat_id, video_path_list, global_config, server_u
             ali_dashscope_base_url=global_config.get("ali_dashscope_base_url"),
             caption_model=global_config.get("caption_model"),
             asr_model=global_config.get("asr_model"),
-            openai_api_key=global_config.get("openai_api_key"),
-            openai_base_url=global_config.get("openai_base_url"),
+            tongyi_api_key=global_config.get("tongyi_api_key"),  # 添加通义千问API密钥
+            tongyi_base_url=global_config.get("tongyi_base_url", "https://dashscope.aliyuncs.com/api/v1"),  # 添加通义千问基础URL
             imagebind_client=imagebind_client,  # Pass HTTP client
         )
         
@@ -765,19 +792,19 @@ def query_worker_process(chat_id, query, global_config, server_url):
         assert os.path.exists(session_working_dir), f"Session working directory does not exist: {session_working_dir}"
 
         videorag_llm_config = LLMConfig(
-            embedding_func_raw=openai_embedding,
-            embedding_model_name="text-embedding-3-small",
+            embedding_func_raw=tongyi_embedding,  # 使用通义千问embedding
+            embedding_model_name="text-embedding-v1",
             embedding_dim=1536,
             embedding_max_token_size=8192,
             embedding_batch_num=32,
             embedding_func_max_async=16,
             query_better_than_threshold=0.2,
-            best_model_func_raw=gpt_complete,
-            best_model_name=global_config.get("analysisModel"),    
+            best_model_func_raw=tongyi_complete,  # 使用通义千问LLM
+            best_model_name="qwen-turbo",    
             best_model_max_token_size=32768,
             best_model_max_async=16,
-            cheap_model_func_raw=gpt_complete,
-            cheap_model_name=global_config.get("processingModel"),
+            cheap_model_func_raw=tongyi_complete,  # 使用通义千问LLM
+            cheap_model_name="qwen-turbo",
             cheap_model_max_token_size=32768,
             cheap_model_max_async=16,
             caption_model_func_raw=dashscope_caption_complete,
@@ -792,8 +819,8 @@ def query_worker_process(chat_id, query, global_config, server_url):
             ali_dashscope_base_url=global_config.get("ali_dashscope_base_url"),
             caption_model=global_config.get("caption_model"),
             asr_model=global_config.get("asr_model"),
-            openai_api_key=global_config.get("openai_api_key"),
-            openai_base_url=global_config.get("openai_base_url"),
+            tongyi_api_key=global_config.get("tongyi_api_key"),  # 添加通义千问API密钥
+            tongyi_base_url=global_config.get("tongyi_base_url", "https://dashscope.aliyuncs.com/api/v1"),  # 添加通义千问基础URL
             imagebind_client=imagebind_client,  # Pass HTTP client
         )
         
@@ -848,6 +875,48 @@ def register_routes(app):
     def health_check():
         """Health check"""
         return jsonify({"status": "ok", "message": "VideoRAG API is running"})
+
+    @app.route('/api/upload/video', methods=['POST'])
+    def upload_video_file():
+        """Upload video file to server"""
+        try:
+            if 'file' not in request.files:
+                return jsonify({
+                    "success": False,
+                    "error": "No file provided"
+                }), 400
+            
+            file = request.files['file']
+            if file.filename == '':
+                return jsonify({
+                    "success": False,
+                    "error": "No file selected"
+                }), 400
+            
+            # Create upload directory
+            upload_dir = '/home/ubuntu/projects/videorag/videos'
+            os.makedirs(upload_dir, exist_ok=True)
+            
+            # Save file
+            filename = file.filename
+            file_path = os.path.join(upload_dir, filename)
+            file.save(file_path)
+            
+            log_to_file(f"📁 Video uploaded: {file_path}")
+            
+            return jsonify({
+                "success": True,
+                "file_path": file_path,
+                "filename": filename,
+                "message": "Video uploaded successfully"
+            })
+            
+        except Exception as e:
+            log_to_file(f"❌ Upload error: {str(e)}")
+            return jsonify({
+                "success": False,
+                "error": f"Upload error: {str(e)}"
+            }), 500
 
     @app.route('/api/video/duration', methods=['POST'])
     def get_video_duration():

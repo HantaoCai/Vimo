@@ -108,6 +108,7 @@ export interface VideoRAGAPI {
     releaseImageBind: () => Promise<{ success: boolean; data?: any; error?: string }>;
     imagebindStatus: () => Promise<{ success: boolean; data?: any; error?: string }>;
     reinitializeConfig: () => Promise<{ success: boolean; message?: string; error?: string }>;
+    configureRemoteServer: (config: { host: string; port: number; enabled: boolean }) => Promise<{ success: boolean; message?: string; error?: string }>;
   };
 
   // App control
@@ -120,6 +121,15 @@ export interface VideoRAGAPI {
     success: boolean; 
     files?: { name: string; path: string; size: number }[]; 
     error?: string 
+  }>;
+  
+  uploadVideoToServer: (filePath: string, fileName: string) => Promise<{
+    success: boolean;
+    data?: any;
+    file_path?: string;
+    filename?: string;
+    message?: string;
+    error?: string;
   }>;
 }
 

@@ -60,15 +60,15 @@ class VideoRAG:
     )
     
     # video
-    threads_for_split: int = 10
-    video_segment_length: int = 30 # seconds
-    rough_num_frames_per_segment: int = 5 # frames
-    fine_num_frames_per_segment: int = 15 # frames
+    threads_for_split: int = 8  # Reduced from 10
+    video_segment_length: int = 20 # seconds (reduced from 30)
+    rough_num_frames_per_segment: int = 3 # frames (reduced from 5)
+    fine_num_frames_per_segment: int = 10 # frames (reduced from 15)
     video_output_format: str = "mp4"
     audio_output_format: str = "mp3"
     audio_sample_rate: int = 16000  # 16kHz
-    video_embedding_batch_num: int = 2
-    segment_retrieval_top_k: int = 4
+    video_embedding_batch_num: int = 1  # Reduced from 2
+    segment_retrieval_top_k: int = 3  # Reduced from 4
     video_embedding_dim: int = 1024
     
     # query
@@ -84,6 +84,9 @@ class VideoRAG:
     ali_dashscope_base_url: str = None
     caption_model: str = None
     asr_model: str = None
+
+    tongyi_api_key: str = None  # 添加通义千问API密钥
+    tongyi_base_url: str = None  # 添加通义千问基础URL
 
     openai_api_key: str = None
     openai_base_url: str = None
@@ -136,6 +139,8 @@ class VideoRAG:
         assert self.ali_dashscope_base_url is not None, "ali_dashscope_base_url is required"
         assert self.caption_model is not None, "caption_model is required"
         assert self.asr_model is not None, "asr_model is required"
+        assert self.tongyi_api_key is not None, "tongyi_api_key is required"  # 添加通义千问API密钥检查
+        assert self.tongyi_base_url is not None, "tongyi_base_url is required"  # 添加通义千问基础URL检查
         assert self.openai_api_key is not None, "openai_api_key is required"
         assert self.openai_base_url is not None, "openai_base_url is required"
 
@@ -187,6 +192,8 @@ class VideoRAG:
             "ali_dashscope_base_url": self.ali_dashscope_base_url,
             "caption_model": self.caption_model,
             "asr_model": self.asr_model,
+            "tongyi_api_key": self.tongyi_api_key,  # 添加通义千问API密钥
+            "tongyi_base_url": self.tongyi_base_url,  # 添加通义千问基础URL
             "openai_api_key": self.openai_api_key,
             "openai_base_url": self.openai_base_url,
             "chunk_func": self.chunk_func,

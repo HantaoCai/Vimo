@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { X, Settings, CheckCircle, AlertCircle, Play, Square, RefreshCw } from 'lucide-react'
+import { X, Settings, CheckCircle, AlertCircle, Play, Square, RefreshCw, Globe } from 'lucide-react'
 import { Button } from './ui/button'
 import { useVideoRAG, VideoRAGConfig } from '../hooks/useVideoRAG'
 import { useVideoRAGService } from '../hooks/useVideoRAGService'
@@ -22,14 +22,21 @@ export const VideoRAGConfigModal = ({ isOpen, onClose }: VideoRAGConfigProps) =>
   const [config, setConfig] = useState<VideoRAGConfig>({
     ali_dashscope_api_key: '',
     ali_dashscope_base_url: 'https://dashscope.aliyuncs.com/compatible-mode/v1',
-    openai_api_key: '',
-    openai_base_url: 'https://api.nuwaapi.com/v1',
+    tongyi_api_key: '',  // 使用通义千问API密钥
+    tongyi_base_url: 'https://dashscope.aliyuncs.com/api/v1',  // 使用通义千问基础URL
     image_bind_model_path: '/Users/renxubin/Desktop/videorag-store/imagebind_huge/imagebind_huge.pth',
     base_storage_path: './videorag-sessions'
   })
+
+  // 远程服务器配置
+  const [remoteConfig, setRemoteConfig] = useState({
+    enabled: false,
+    host: '192.168.1.100', // 默认Ubuntu服务器IP
+    port: 64451
+  })
   
   // Local check configuration completeness, not dependent on network status
-  const isConfigured = !!(config.openai_api_key && 
+  const isConfigured = !!(config.tongyi_api_key &&  // 检查通义千问API密钥
                           config.ali_dashscope_api_key && 
                           config.image_bind_model_path)
   
@@ -45,6 +52,16 @@ export const VideoRAGConfigModal = ({ isOpen, onClose }: VideoRAGConfigProps) =>
         console.error('Failed to load saved config:', error)
       }
     }
+    
+    // Load remote server config
+    const savedRemoteConfig = localStorage.getItem('videorag-remote-config')
+    if (savedRemoteConfig) {
+      try {
+        setRemoteConfig(JSON.parse(savedRemoteConfig))
+      } catch (error) {
+        console.error('Failed to load remote config:', error)
+      }
+    }
   }, [])
 
   const handleConfigChange = (field: keyof VideoRAGConfig, value: string) => {
@@ -57,6 +74,17 @@ export const VideoRAGConfigModal = ({ isOpen, onClose }: VideoRAGConfigProps) =>
   const handleSave = async () => {
     // Save config to localStorage
     localStorage.setItem('videorag-config', JSON.stringify(config))
+    localStorage.setItem('videorag-remote-config', JSON.stringify(remoteConfig))
+    
+    // Configure remote server if enabled
+    if (remoteConfig.enabled) {
+      try {
+        await window.api.videorag.configureRemoteServer(remoteConfig)
+        console.log('Remote server configured successfully')
+      } catch (error) {
+        console.error('Failed to configure remote server:', error)
+      }
+    }
     
     // Initialize VideoRAG
     const success = await initialize(config)
@@ -168,6 +196,62 @@ export const VideoRAGConfigModal = ({ isOpen, onClose }: VideoRAGConfigProps) =>
               </div>
             </div>
 
+            {/* Remote Server Configuration */}
+            <div className="p-4 rounded-lg bg-blue-50 border border-blue-200">
+              <div className="flex items-center justify-between mb-3">
+                <div className="flex items-center space-x-2">
+                  <Globe className="w-5 h-5 text-blue-600" />
+                  <span className="font-medium text-blue-800">Remote Server Configuration</span>
+                </div>
+                <div className="flex items-center space-x-2">
+                  <input
+                    type="checkbox"
+                    id="remote-enabled"
+                    checked={remoteConfig.enabled}
+                    onChange={(e) => setRemoteConfig(prev => ({ ...prev, enabled: e.target.checked }))}
+                    className="rounded border-gray-300"
+                  />
+                  <label htmlFor="remote-enabled" className="text-sm font-medium text-blue-700">
+                    Enable Remote Server
+                  </label>
+                </div>
+              </div>
+              
+              {remoteConfig.enabled && (
+                <div className="space-y-3">
+                  <div className="grid grid-cols-2 gap-3">
+                    <div>
+                      <label className="block text-sm font-medium text-blue-700 mb-1">
+                        Server Host
+                      </label>
+                      <input
+                        type="text"
+                        value={remoteConfig.host}
+                        onChange={(e) => setRemoteConfig(prev => ({ ...prev, host: e.target.value }))}
+                        placeholder="192.168.1.100"
+                        className="w-full px-3 py-2 border border-blue-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium text-blue-700 mb-1">
+                        Port
+                      </label>
+                      <input
+                        type="number"
+                        value={remoteConfig.port}
+                        onChange={(e) => setRemoteConfig(prev => ({ ...prev, port: parseInt(e.target.value) || 64451 }))}
+                        placeholder="64451"
+                        className="w-full px-3 py-2 border border-blue-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                      />
+                    </div>
+                  </div>
+                  <div className="text-xs text-blue-600">
+                    💡 Configure this to connect to a remote Ubuntu server running VideoRAG API
+                  </div>
+                </div>
+              )}
+            </div>
+
             {/* Configuration Status */}
             <div className="p-4 rounded-lg bg-gray-50">
               <div className="flex items-center space-x-2">
@@ -224,12 +308,12 @@ export const VideoRAGConfigModal = ({ isOpen, onClose }: VideoRAGConfigProps) =>
             <div className="space-y-4">
               <div>
                 <label className="block text-sm font-medium mb-1">
-                  OpenAI API Key *
+                  通义千问 API 密钥 *
                 </label>
                 <input
                   type={showApiKeys ? 'text' : 'password'}
-                  value={config.openai_api_key}
-                  onChange={(e) => handleConfigChange('openai_api_key', e.target.value)}
+                  value={config.tongyi_api_key}
+                  onChange={(e) => handleConfigChange('tongyi_api_key', e.target.value)}
                   placeholder="sk-..."
                   className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
                 />
@@ -237,13 +321,13 @@ export const VideoRAGConfigModal = ({ isOpen, onClose }: VideoRAGConfigProps) =>
 
               <div>
                 <label className="block text-sm font-medium mb-1">
-                  OpenAI Base URL
+                  通义千问 Base URL
                 </label>
                 <input
                   type="text"
-                  value={config.openai_base_url}
-                  onChange={(e) => handleConfigChange('openai_base_url', e.target.value)}
-                  placeholder="https://api.openai.com/v1"
+                  value={config.tongyi_base_url}
+                  onChange={(e) => handleConfigChange('tongyi_base_url', e.target.value)}
+                  placeholder="https://dashscope.aliyuncs.com/api/v1"
                   className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
                 />
               </div>
@@ -325,7 +409,7 @@ export const VideoRAGConfigModal = ({ isOpen, onClose }: VideoRAGConfigProps) =>
           </Button>
           <Button 
             onClick={handleSave}
-            disabled={loading.initializing || !config.openai_api_key || !config.ali_dashscope_api_key || !config.image_bind_model_path}
+            disabled={loading.initializing || !config.tongyi_api_key || !config.ali_dashscope_api_key || !config.image_bind_model_path}
           >
             {loading.initializing ? 'Configuring...' : 'Save & Configure'}
           </Button>

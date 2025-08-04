@@ -4,12 +4,27 @@ import { ChildProcess, spawn } from 'child_process'
 import path from 'path'
 import fs from 'fs'
 
-let VIDEORAG_API_BASE_URL = 'http://localhost:64451/api'
+// 支持远程服务器配置
+let VIDEORAG_API_BASE_URL = 'http://192.168.1.132:64451/api'
+let REMOTE_SERVER_CONFIG = {
+  enabled: false,
+  host: '192.168.1.132',
+  port: 64451
+}
 
 // Update API base URL
 function updateAPIBaseURL(port: number) {
-  VIDEORAG_API_BASE_URL = `http://localhost:${port}/api`
+  // 直接使用远程服务器地址
+  VIDEORAG_API_BASE_URL = `http://192.168.1.132:64451/api`
   console.log(`📡 Updated API base URL to: ${VIDEORAG_API_BASE_URL}`)
+}
+
+// 设置远程服务器配置
+function setRemoteServerConfig(host: string, port: number, enabled: boolean = true) {
+  REMOTE_SERVER_CONFIG = { host, port, enabled }
+  console.log(`🌐 Remote server config: ${host}:${port} (enabled: ${enabled})`)
+  // 立即更新API URL
+  updateAPIBaseURL(port)
 }
 
 // Python backend process management
@@ -21,25 +36,21 @@ const PORT_RANGE_END = 64470
 
 // Efficiently scan port range to find VideoRAG service
 async function scanForVideoRAGService(startPort?: number, endPort?: number): Promise<number | null> {
-  const start = startPort || PORT_RANGE_START
-  const end = endPort || PORT_RANGE_END
+  // 从VIDEORAG_API_BASE_URL解析主机和端口
+  const url = new URL(VIDEORAG_API_BASE_URL)
+  const host = url.hostname
+  const port = parseInt(url.port)
   
-  console.log(`🔍 Scanning for VideoRAG service on ports ${start}-${end}...`)
-  
-  for (let port = start; port <= end; port++) {
-    try {
-      const isHealthy = await attemptHealthCheck(port)
-      if (isHealthy) {
-        console.log(`🎯 Found healthy VideoRAG service on port ${port}`)
-        return port
-      }
-    } catch (error) {
-      // Continue checking next port
-      continue
+  console.log(`🔍 Checking VideoRAG service at ${host}:${port}...`)
+  try {
+    const isHealthy = await attemptHealthCheck(port, host)
+    if (isHealthy) {
+      console.log(`🎯 Found healthy VideoRAG service at ${host}:${port}`)
+      return port
     }
+  } catch (error) {
+    console.log(`❌ VideoRAG service not available at ${host}:${port}`)
   }
-  
-  console.log(`❌ No VideoRAG service found in port range ${start}-${end}`)
   return null
 }
 
@@ -96,15 +107,19 @@ export function startVideoRAGService(): Promise<boolean> {
             env: { ...process.env },
           })
           
-          pythonProcess.stdout?.on('data', (data) => {
-            const output = data.toString()
-            console.log(`VideoRAG API: ${output}`)
-          })
+          if (pythonProcess.stdout) {
+            pythonProcess.stdout.on('data', (data) => {
+              const output = data.toString()
+              console.log(`VideoRAG API: ${output}`)
+            })
+          }
 
-          pythonProcess.stderr?.on('data', (data) => {
-            const errorStr = data.toString()
-            console.error(`VideoRAG API Error: ${errorStr}`)
-          })
+          if (pythonProcess.stderr) {
+            pythonProcess.stderr.on('data', (data) => {
+              const errorStr = data.toString()
+              console.error(`VideoRAG API Error: ${errorStr}`)
+            })
+          }
           
           console.log(`✅ Successfully started packaged executable`)
           
@@ -197,13 +212,13 @@ async function callVideoRAGAPI(endpoint: string, method: 'GET' | 'POST' | 'DELET
   
   // Asynchronous operation: return quickly, do not wait for completion
   if (endpoint.includes('/upload')) {
-    timeout = customTimeout || 60000; // Video upload operation: 60 seconds
+    timeout = customTimeout || 120000; // Video upload operation: 120 seconds (increased from 60s)
   } else if (endpoint.includes('/initialize')) {
-    timeout = customTimeout || 120000; // Initialization still needs to wait: 2 minutes
+    timeout = customTimeout || 180000; // Initialization still needs to wait: 3 minutes (increased from 2min)
   } else if (endpoint.includes('/status')) {
     timeout = customTimeout || 10000;  // Status query: 10 seconds
   } else if (endpoint.includes('/imagebind/load') || endpoint.includes('/imagebind/release')) {
-    timeout = customTimeout || 180000; // ImageBind model load/release: 3 minutes
+    timeout = customTimeout || 300000; // ImageBind model load/release: 5 minutes (increased from 3min)
   } else if (endpoint.includes('/imagebind/status')) {
     timeout = customTimeout || 10000;  // ImageBind status query: 10 seconds
   }
@@ -256,15 +271,15 @@ async function initializeVideoRAGConfig(): Promise<void> {
     const videoragConfig = {
       // Required fields - no default values
       ali_dashscope_api_key: settings.dashscopeApiKey,
-      openai_api_key: settings.openaiApiKey,
+      tongyi_api_key: settings.tongyiApiKey,  // 添加通义千问API密钥
       image_bind_model_path: imagebindModelPath, // Use dynamically built path
       base_storage_path: settings.storeDirectory,
       
       // Fields with default values
       ali_dashscope_base_url: settings.dashscopeBaseUrl || 'https://dashscope.aliyuncs.com/compatible-mode/v1',
-      openai_base_url: settings.openaiBaseUrl || 'https://api.openai.com/v1',
-      analysisModel: settings.analysisModel || 'gpt-4o-mini',
-      processingModel: settings.processingModel || 'gpt-4o-mini',
+      tongyi_base_url: settings.tongyiBaseUrl || 'https://dashscope.aliyuncs.com/api/v1',  // 添加通义千问基础URL
+      analysisModel: settings.analysisModel || 'qwen-turbo',  // 默认使用通义千问
+      processingModel: settings.processingModel || 'qwen-turbo',  // 默认使用通义千问
       caption_model: settings.captionModel || 'qwen-vl-plus-latest',
       asr_model: settings.asrModel || 'paraformer-realtime-v2'
     }
@@ -272,8 +287,8 @@ async function initializeVideoRAGConfig(): Promise<void> {
     console.log('🔧 VideoRAG configuration validation:', {
       ali_dashscope_api_key: videoragConfig.ali_dashscope_api_key ? '✅ SET' : '❌ MISSING',
       ali_dashscope_base_url: '✅ SET (default allowed)',
-      openai_api_key: videoragConfig.openai_api_key ? '✅ SET' : '❌ MISSING',
-      openai_base_url: '✅ SET (default allowed)',
+      tongyi_api_key: videoragConfig.tongyi_api_key ? '✅ SET' : '❌ MISSING',  // 添加通义千问API密钥验证
+      tongyi_base_url: '✅ SET (default allowed)',  // 添加通义千问基础URL验证
       image_bind_model_path: videoragConfig.image_bind_model_path ? '✅ SET' : '❌ MISSING',
       base_storage_path: videoragConfig.base_storage_path ? '✅ SET' : '❌ MISSING',
       analysisModel: '✅ SET (default allowed)',
@@ -289,8 +304,8 @@ async function initializeVideoRAGConfig(): Promise<void> {
       missingFields.push('Ali Dashscope API Key (dashscopeApiKey)')
     }
     
-    if (!videoragConfig.openai_api_key || videoragConfig.openai_api_key.trim() === '') {
-      missingFields.push('OpenAI API Key (openaiApiKey)')
+    if (!videoragConfig.tongyi_api_key || videoragConfig.tongyi_api_key.trim() === '') {
+      missingFields.push('Tongyi API Key (tongyiApiKey)')  // 添加通义千问API密钥验证
     }
     
     if (!videoragConfig.base_storage_path || videoragConfig.base_storage_path.trim() === '') {
@@ -489,6 +504,16 @@ export function setupVideoRAGHandlers() {
       // Production mode: actually stop the service
       stopVideoRAGService()
       return { success: true, message: 'Service stopped successfully' }
+    } catch (error: any) {
+      return { success: false, error: error.message }
+    }
+  })
+
+  // Configure remote server
+  ipcMain.handle('videorag:configure-remote-server', async (_, config: { host: string; port: number; enabled: boolean }) => {
+    try {
+      setRemoteServerConfig(config.host, config.port, config.enabled)
+      return { success: true, message: `Remote server configured: ${config.host}:${config.port}` }
     } catch (error: any) {
       return { success: false, error: error.message }
     }
@@ -723,18 +748,18 @@ export function setupVideoRAGHandlers() {
 }
 
 // Single health check attempt
-async function attemptHealthCheck(port: number): Promise<boolean> {
+async function attemptHealthCheck(port: number, host: string = 'localhost'): Promise<boolean> {
   try {
     const response = await axios({
       method: 'GET',
-      url: `http://localhost:${port}/api/health`,
+      url: `http://${host}:${port}/api/health`,
       timeout: 5000,
       validateStatus: (status) => status === 200
     })
     
     // Validate response content
     if (response.data && response.data.status === 'ok') {
-      console.log(`✅ Health check successful on port ${port}:`, response.data)
+      console.log(`✅ Health check successful on ${host}:${port}:`, response.data)
       return true
     } else {
       console.log(`⚠️ Unexpected health check response:`, response.data)
@@ -743,11 +768,11 @@ async function attemptHealthCheck(port: number): Promise<boolean> {
     
   } catch (error: any) {
     if (error.code === 'ECONNREFUSED') {
-      console.log(`🔍 Port ${port} not ready yet (connection refused)`)
+      console.log(`🔍 ${host}:${port} not ready yet (connection refused)`)
     } else if (error.code === 'ECONNRESET') {
-      console.log(`🔍 Port ${port} connection reset, service might be starting`)
+      console.log(`🔍 ${host}:${port} connection reset, service might be starting`)
     } else {
-      console.log(`🔍 Health check failed on port ${port}:`, error.message)
+      console.log(`🔍 Health check failed on ${host}:${port}:`, error.message)
     }
     return false
   }

@@ -318,7 +318,6 @@ def load_and_transform_video_data(
             video_path,
             decoder="decord",
             decode_audio=False,
-            **{"sample_rate": sample_rate},
         )
 
         all_clips_timepoints = get_clip_timepoints(clip_sampler, video.duration)

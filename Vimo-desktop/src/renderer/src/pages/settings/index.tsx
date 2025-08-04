@@ -21,34 +21,61 @@ import {
 } from 'lucide-react';
 
 interface SettingsState {
-  // OpenAI Configuration
-  openaiBaseUrl: string;
-  openaiApiKey: string;
-  processingModel: string; // processing model - for massive preprocessing
-  analysisModel: string;   // analysis model - for fine-grained analysis
+  // OpenAI settings
+  openaiBaseUrl: string
+  openaiApiKey: string
   
-  // DashScope Configuration
-  dashscopeApiKey: string;
-  captionModel: string;    // video description model
-  asrModel: string;        // speech recognition model
+  // Tongyi settings
+  tongyiBaseUrl: string
+  tongyiApiKey: string
   
-  // System Configuration
-  storeDirectory: string; // model storage directory
+  // DashScope settings
+  dashscopeApiKey: string
   
-  // Initialization tracking
-  imagebindInstalled: boolean;
+  // Model settings
+  processingModel: string
+  analysisModel: string
+  captionModel: string
+  asrModel: string
+  
+  // Storage settings
+  storeDirectory: string
+  
+  // Python settings
+  pythonPath: string
+  pythonInstalled: boolean
+  pythonVersion: string
+  selectedCondaEnvironment: string
+  imagebindInstalled: boolean
 }
 
 const Settings = () => {
   const [settings, setSettings] = useState<SettingsState>({
-    openaiBaseUrl: '',
+    // OpenAI settings
+    openaiBaseUrl: 'https://api.openai.com/v1',
     openaiApiKey: '',
-    processingModel: 'gpt-4o-mini',
-    analysisModel: 'gpt-4o-mini', 
+    
+    // Tongyi settings
+    tongyiBaseUrl: 'https://dashscope.aliyuncs.com/api/v1',
+    tongyiApiKey: '',
+    
+    // DashScope settings
     dashscopeApiKey: '',
+    
+    // Model settings
+    processingModel: 'qwen-turbo',  // 默认使用通义千问
+    analysisModel: 'qwen-turbo',    // 默认使用通义千问
     captionModel: 'qwen-vl-plus-latest',
     asrModel: 'paraformer-realtime-v2',
+    
+    // Storage settings
     storeDirectory: '',
+    
+    // Python settings
+    pythonPath: '',
+    pythonInstalled: false,
+    pythonVersion: '',
+    selectedCondaEnvironment: '',
     imagebindInstalled: false,
   });
 
@@ -366,6 +393,35 @@ const ModelStatusSection = ({ storeDirectory }: { storeDirectory: string }) => {
                       <p className="text-xs text-gray-500 mt-1">Fixed model for detailed analysis tasks</p>
                     </div>
                   </div>
+                </div>
+              </div>
+
+              {/* Tongyi Configuration */}
+              <div className="space-y-4">
+                <h3 className="text-lg font-medium">通义千问配置</h3>
+                <div className="space-y-2">
+                  <label className="block text-sm font-medium text-gray-700">
+                    通义千问 API 密钥
+                  </label>
+                  <input
+                    type="password"
+                    value={settings.tongyiApiKey}
+                    onChange={(e) => setSettings(prev => ({ ...prev, tongyiApiKey: e.target.value }))}
+                    placeholder="sk-..."
+                    className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  />
+                </div>
+                <div className="space-y-2">
+                  <label className="block text-sm font-medium text-gray-700">
+                    通义千问 API 基础URL
+                  </label>
+                  <input
+                    type="text"
+                    value={settings.tongyiBaseUrl}
+                    onChange={(e) => setSettings(prev => ({ ...prev, tongyiBaseUrl: e.target.value }))}
+                    placeholder="https://dashscope.aliyuncs.com/api/v1"
+                    className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  />
                 </div>
               </div>
 

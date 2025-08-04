@@ -72,15 +72,17 @@ export const useChat = () => {
       const currentSessionInfo = sessionInfo.getSessionInfo(chatId);
       if (currentSessionInfo && currentSessionInfo.videos.length > 0) {
         // Load video data from JSON file to memory state as temporary working state
-        console.log('📂 Loading videos from JSON to memory for session:', chatId, currentSessionInfo.videos);
-        setUploadedVideos([...currentSessionInfo.videos]);
+        // Filter out videos with invalid path to prevent type errors
+        const validVideos = currentSessionInfo.videos.filter(video => video.path && video.path.trim() !== '');
+        console.log('📂 Loading videos from JSON to memory for session:', chatId, validVideos);
+        setUploadedVideos(validVideos);
         
         // Restore analysis state
         setAnalysisState({
           isAnalyzing: currentSessionInfo.analysisState === 'analyzing',
           progress: currentSessionInfo.analysisProgress || 0,
           currentStep: currentSessionInfo.currentStep || 'Initializing',
-          selectedVideos: currentSessionInfo.videos,
+          selectedVideos: validVideos,
         });
       } else {
         // Existing session but no videos: clear memory state

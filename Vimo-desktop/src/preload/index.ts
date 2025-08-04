@@ -23,6 +23,14 @@ export interface VideoRAGAPI {
     files?: Array<{ name: string; path: string; size: number }>;
     error?: string;
   }>;
+  uploadVideoToServer: (filePath: string, fileName: string) => Promise<{
+    success: boolean;
+    data?: any;
+    file_path?: string;
+    filename?: string;
+    message?: string;
+    error?: string;
+  }>;
 
   saveSettings: (
     settings: any,
@@ -118,6 +126,7 @@ export interface VideoRAGAPI {
     releaseImageBind: () => Promise<{ success: boolean; data?: any; error?: string }>;
     imagebindStatus: () => Promise<{ success: boolean; data?: any; error?: string }>;
     reinitializeConfig: () => Promise<{ success: boolean; message?: string; error?: string }>;
+    configureRemoteServer: (config: { host: string; port: number; enabled: boolean }) => Promise<{ success: boolean; message?: string; error?: string }>;
   };
 
   // App control
@@ -134,6 +143,7 @@ const api: VideoRAGAPI = {
   saveFile: (content: string) => ipcRenderer.invoke('save-file', content),
   selectFolder: () => ipcRenderer.invoke('select-folder'),
   selectVideoFiles: () => ipcRenderer.invoke('select-video-files'),
+  uploadVideoToServer: (filePath: string, fileName: string) => ipcRenderer.invoke('upload-video-to-server', filePath, fileName),
 
   saveSettings: (settings: any) =>
     ipcRenderer.invoke('save-settings', settings),
@@ -201,7 +211,8 @@ const api: VideoRAGAPI = {
     loadImageBind: () => ipcRenderer.invoke('videorag:load-imagebind'),
     releaseImageBind: () => ipcRenderer.invoke('videorag:release-imagebind'),
     imagebindStatus: () => ipcRenderer.invoke('videorag:imagebind-status'),
-    reinitializeConfig: () => ipcRenderer.invoke('videorag:reinitialize-config')
+    reinitializeConfig: () => ipcRenderer.invoke('videorag:reinitialize-config'),
+    configureRemoteServer: (config: { host: string; port: number; enabled: boolean }) => ipcRenderer.invoke('videorag:configure-remote-server', config)
   },
 
   // App control

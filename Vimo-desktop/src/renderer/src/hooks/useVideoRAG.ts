@@ -11,8 +11,8 @@ export interface VideoIndexStatus {
 export interface VideoRAGConfig {
   ali_dashscope_api_key: string
   ali_dashscope_base_url: string
-  openai_api_key: string
-  openai_base_url: string
+  tongyi_api_key: string  // 通义千问API密钥
+  tongyi_base_url: string  // 通义千问基础URL
   image_bind_model_path: string
   base_storage_path?: string
 }
