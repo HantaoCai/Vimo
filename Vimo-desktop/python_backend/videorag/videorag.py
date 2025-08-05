@@ -11,7 +11,7 @@ import logging
 
 from ._llm import (
     LLMConfig,
-    openai_4o_mini_config,
+    tongyi_config,
 )
 from ._op import (
     chunking_by_video_segments,
