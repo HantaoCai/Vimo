@@ -219,8 +219,8 @@ async def tongyi_embedding(model_name: str, texts: list[str], **kwargs) -> np.nd
     if not api_key:
         raise ValueError("Tongyi API key not found in global_config")
     
-    # 构建请求
-    url = "https://dashscope.aliyuncs.com/api/v1/services/embeddings/text-embedding-v1/text-embedding"
+    # 构建请求 - 使用正确的DashScope embedding API端点
+    url = "https://dashscope.aliyuncs.com/compatible-mode/v1/embeddings"
     headers = {
         "Authorization": f"Bearer {api_key}",
         "Content-Type": "application/json"
@@ -230,8 +230,8 @@ async def tongyi_embedding(model_name: str, texts: list[str], **kwargs) -> np.nd
     # 批量处理文本
     for text in texts:
         data = {
-            "model": "text-embedding-v1",
-            "input": text
+            "input": text,
+            "model": "text-embedding-v1"
         }
         
         async with httpx.AsyncClient() as client:
@@ -239,8 +239,8 @@ async def tongyi_embedding(model_name: str, texts: list[str], **kwargs) -> np.nd
             response.raise_for_status()
             result = response.json()
             
-            if "output" in result and "embeddings" in result["output"]:
-                embedding = result["output"]["embeddings"][0]["embedding"]
+            if "data" in result and len(result["data"]) > 0:
+                embedding = result["data"][0]["embedding"]
                 embeddings.append(embedding)
             else:
                 raise RuntimeError(f"Unexpected response format: {result}")
@@ -280,7 +280,7 @@ async def tongyi_complete_if_cache(
             return if_cache_return["return"]
     
     # 构建请求
-    url = "https://dashscope.aliyuncs.com/api/v1/services/aigc/text-generation/generation"
+    url = "https://dashscope.aliyuncs.com/compatible-mode/v1/chat/completions"
     headers = {
         "Authorization": f"Bearer {api_key}",
         "Content-Type": "application/json"
@@ -288,13 +288,9 @@ async def tongyi_complete_if_cache(
     
     data = {
         "model": model,
-        "input": {
-            "messages": messages
-        },
-        "parameters": {
-            "temperature": kwargs.get("temperature", 0.7),
-            "max_tokens": kwargs.get("max_tokens", 4096)
-        }
+        "messages": messages,
+        "temperature": kwargs.get("temperature", 0.7),
+        "max_tokens": kwargs.get("max_tokens", 4096)
     }
     
     async with httpx.AsyncClient() as client:
@@ -302,8 +298,8 @@ async def tongyi_complete_if_cache(
         response.raise_for_status()
         result = response.json()
         
-        if "output" in result and "text" in result["output"]:
-            content = result["output"]["text"]
+        if "choices" in result and len(result["choices"]) > 0:
+            content = result["choices"][0]["message"]["content"]
         else:
             raise RuntimeError(f"Unexpected response format: {result}")
     
