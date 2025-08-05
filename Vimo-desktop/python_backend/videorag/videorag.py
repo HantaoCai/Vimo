@@ -336,39 +336,52 @@ class VideoRAG:
             if progress_callback:
                 progress_callback("Audio Processing", f"Performing speech recognition for {video_name}...")
             
-            transcripts = speech_to_text(
-                video_name, 
-                self.working_dir, 
-                segment_index2name,
-                self.audio_output_format,
-                self.safe_config,  # Pass global config dict
-            )
+            try:
+                transcripts = speech_to_text(
+                    video_name, 
+                    self.working_dir, 
+                    segment_index2name,
+                    self.audio_output_format,
+                    self.safe_config,  # Pass global config dict
+                )
+            except Exception as e:
+                logger.error(f"ASR processing failed for {video_name}: {str(e)}")
+                # Create empty transcripts to continue processing
+                transcripts = {index: "" for index in segment_index2name}
             
             # Step3: saving video segments **as well as** obtain caption with vision language model
             if progress_callback:
                 progress_callback("Visual Analyzing", f"Analyzing video content for {video_name}...")
             
-    
-            saving_video_segments(
-                    video_name,
-                    video_path,
-                    self.working_dir,
-                    segment_index2name,
-                    segment_times_info,
-                    self.video_output_format,
-            )
+            try:
+                saving_video_segments(
+                        video_name,
+                        video_path,
+                        self.working_dir,
+                        segment_index2name,
+                        segment_times_info,
+                        self.video_output_format,
+                )
+            except Exception as e:
+                logger.error(f"Video segment saving failed for {video_name}: {str(e)}")
+                # Continue without video segments
             
             # Pass the complete safe_config to segment_caption for LLM configuration
             captions = {}
-            segment_caption(
-                    video_name,
-                    video_path,
-                    segment_index2name,
-                    transcripts,
-                    segment_times_info,
-                    captions,
-                    self.safe_config,
-            )
+            try:
+                segment_caption(
+                        video_name,
+                        video_path,
+                        segment_index2name,
+                        transcripts,
+                        segment_times_info,
+                        captions,
+                        self.safe_config,
+                )
+            except Exception as e:
+                logger.error(f"Caption generation failed for {video_name}: {str(e)}")
+                # Create empty captions to continue processing
+                captions = {index: "No caption available" for index in segment_index2name}
 
             segments_information = merge_segment_information(
                 segment_index2name,
@@ -385,11 +398,15 @@ class VideoRAG:
             if progress_callback:
                 progress_callback("Feature Encoding", f"Encoding video features for {video_name}...")
             
-            loop.run_until_complete(self.video_segment_feature_vdb.upsert(
-                video_name,
-                segment_index2name,
-                self.video_output_format,
-            ))
+            try:
+                loop.run_until_complete(self.video_segment_feature_vdb.upsert(
+                    video_name,
+                    segment_index2name,
+                    self.video_output_format,
+                ))
+            except Exception as e:
+                logger.error(f"Feature encoding failed for {video_name}: {str(e)}")
+                # Continue without feature encoding
 
             video_segment_cache_path = os.path.join(self.working_dir, '_cache', video_name)
             if os.path.exists(video_segment_cache_path):

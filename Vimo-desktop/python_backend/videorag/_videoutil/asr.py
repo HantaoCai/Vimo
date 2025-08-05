@@ -12,6 +12,12 @@ async def process_single_segment(semaphore, index, segment_name, audio_file, mod
     async with semaphore:  # Limit concurrent requests
         try:
             logger.info(f"Processing segment {segment_name} with model {model}")
+            
+            # Check if audio file exists
+            if not os.path.exists(audio_file):
+                logger.error(f"Audio file not found: {audio_file}")
+                return index, ""
+            
             # Create recognition instance
             recognition = Recognition(
                 model=model,
@@ -25,21 +31,43 @@ async def process_single_segment(semaphore, index, segment_name, audio_file, mod
             loop = asyncio.get_event_loop()
             result = await loop.run_in_executor(None, recognition.call, audio_file)
             
-            # logger.info(f"ASR result: {result}")
-            # Extract text from result
-            if result and "output" in result and "sentence" in result["output"]:
+            # Add detailed logging for debugging
+            logger.info(f"ASR result type: {type(result)}")
+            if result is not None:
+                logger.info(f"ASR result keys: {result.keys() if isinstance(result, dict) else 'Not a dict'}")
+            
+            # Extract text from result with better error handling
+            if result is None:
+                logger.warning(f"ASR returned None for segment {segment_name}")
+                return index, ""
+            elif not isinstance(result, dict):
+                logger.warning(f"ASR returned non-dict result for segment {segment_name}: {type(result)}")
+                return index, ""
+            elif "output" not in result:
+                logger.warning(f"ASR result missing 'output' key for segment {segment_name}")
+                return index, ""
+            elif "sentence" not in result["output"]:
+                logger.warning(f"ASR result missing 'sentence' key for segment {segment_name}")
+                return index, ""
+            else:
                 sentences = result["output"]["sentence"]
+                if not sentences:
+                    logger.warning(f"No sentences in ASR result for segment {segment_name}")
+                    return index, ""
+                
                 asr_result = ""
                 for sentence in sentences:
-                    asr_result += sentence.get('text', '') + "\n"
+                    if isinstance(sentence, dict) and 'text' in sentence:
+                        asr_result += sentence.get('text', '') + "\n"
+                    else:
+                        logger.warning(f"Unexpected sentence format in segment {segment_name}: {sentence}")
+                
                 return index, asr_result.strip()
-            else:
-                logger.warning(f"No transcription result for segment {segment_name}")
-                return index, ""
                 
         except Exception as e:
             logger.error(f"ASR failed for segment {segment_name}: {str(e)}")
-            raise e
+            # Don't raise the exception, return empty result instead
+            return index, ""
 
 async def speech_to_text_online(video_name, working_dir, segment_index2name, audio_output_format, global_config, max_concurrent=5):
     """

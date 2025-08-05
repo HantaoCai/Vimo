@@ -50,15 +50,27 @@ def split_video(
             audio_file_base_name = segment_index2name[f"{segment_index}"]
             audio_file = f'{audio_file_base_name}.{audio_output_format}'
             subaudio = subvideo.audio
-            # Convert to mono and set sample rate using ffmpeg parameters
-            subaudio.write_audiofile(
-                os.path.join(video_segment_cache_path, audio_file), 
-                codec='mp3',
-                fps=audio_sample_rate,  # Set sample rate
-                ffmpeg_params=['-ac', '1'],  # Force mono (1 audio channel)
-                verbose=False, 
-                logger=None
-            )
+            
+            # Check if audio exists
+            if subaudio is None:
+                logger.warning(f"No audio found in segment {segment_index} for video {video_name}")
+                # Create an empty audio file or skip audio processing
+                continue
+            
+            try:
+                # Convert to mono and set sample rate using ffmpeg parameters
+                subaudio.write_audiofile(
+                    os.path.join(video_segment_cache_path, audio_file), 
+                    codec='mp3',
+                    fps=audio_sample_rate,  # Set sample rate
+                    ffmpeg_params=['-ac', '1'],  # Force mono (1 audio channel)
+                    verbose=False, 
+                    logger=None
+                )
+            except Exception as e:
+                logger.error(f"Failed to save audio for segment {segment_index}: {str(e)}")
+                # Continue processing other segments even if audio fails
+                continue
             
             segment_index += 1
 
@@ -73,13 +85,24 @@ def saving_video_segments(
     video_output_format='mp4',
 ):
     try:
+        # Check if video file exists
+        if not os.path.exists(video_path):
+            logger.error(f"Video file not found: {video_path}")
+            raise FileNotFoundError(f"Video file not found: {video_path}")
+            
         with VideoFileClip(video_path) as video:
             video_segment_cache_path = os.path.join(working_dir, '_cache', video_name)
             for index in tqdm(segment_index2name, desc=f"Saving Video Segments {video_name}"):
-                start, end = segment_times_info[index]["timestamp"][0], segment_times_info[index]["timestamp"][1]
-                video_file = f'{segment_index2name[index]}.{video_output_format}'
-                subvideo = video.subclip(start, end)
-                subvideo.write_videofile(os.path.join(video_segment_cache_path, video_file), codec='libx264', verbose=False, logger=None)
+                try:
+                    start, end = segment_times_info[index]["timestamp"][0], segment_times_info[index]["timestamp"][1]
+                    video_file = f'{segment_index2name[index]}.{video_output_format}'
+                    subvideo = video.subclip(start, end)
+                    subvideo.write_videofile(os.path.join(video_segment_cache_path, video_file), codec='libx264', verbose=False, logger=None)
+                except Exception as e:
+                    logger.error(f"Failed to save video segment {index}: {str(e)}")
+                    # Continue processing other segments
+                    continue
     except Exception as e:
-        logger.error(f"Error in saving_video_segments:\n {str(e)}")
-        raise RuntimeError
+        logger.error(f"Error in saving_video_segments for video {video_name}: {str(e)}")
+        # Don't raise RuntimeError, just log the error
+        logger.info(f"Continuing without video segments for {video_name}")

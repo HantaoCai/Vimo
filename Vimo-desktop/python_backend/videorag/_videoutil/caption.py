@@ -76,14 +76,35 @@ async def segment_caption_async(video_name, video_path, segment_index2name, tran
 def segment_caption(video_name, video_path, segment_index2name, transcripts, segment_times_info, caption_result, global_config):
     """Worker function for multiprocessing"""
     try:
+        # Check if required data exists
+        if not segment_index2name:
+            logger.warning(f"No segments to process for video {video_name}")
+            return
+            
+        if not transcripts:
+            logger.warning(f"No transcripts available for video {video_name}")
+            return
+            
+        # Check if video file exists
+        if not os.path.exists(video_path):
+            logger.error(f"Video file not found: {video_path}")
+            raise FileNotFoundError(f"Video file not found: {video_path}")
+        
         result = asyncio.run(
             segment_caption_async(video_name, video_path, segment_index2name, transcripts, segment_times_info, global_config)
         )
-        for index, caption in result.items():
-            caption_result[index] = caption
+        
+        if result:
+            for index, caption in result.items():
+                caption_result[index] = caption
+        else:
+            logger.warning(f"No caption results returned for video {video_name}")
+            
     except Exception as e:
-        logger.error(f"Error in segment_caption:\n {str(e)}")
-        raise RuntimeError
+        logger.error(f"Error in segment_caption for video {video_name}: {str(e)}")
+        # Don't raise RuntimeError, just log the error and continue
+        # This allows the process to continue even if caption generation fails
+        logger.info(f"Continuing without captions for video {video_name}")
 
 def merge_segment_information(segment_index2name, segment_times_info, transcripts, captions):
     inserting_segments = {}
@@ -91,8 +112,13 @@ def merge_segment_information(segment_index2name, segment_times_info, transcript
         inserting_segments[index] = {"content": None, "time": None}
         segment_name = segment_index2name[index]
         inserting_segments[index]["time"] = '-'.join(segment_name.split('-')[-2:])
-        inserting_segments[index]["content"] = f"Caption:\n{captions[index]}\nTranscript:\n{transcripts[index]}\n\n"
-        inserting_segments[index]["transcript"] = transcripts[index]
+        
+        # Handle missing captions gracefully
+        caption_text = captions.get(index, "No caption available")
+        transcript_text = transcripts.get(index, "No transcript available")
+        
+        inserting_segments[index]["content"] = f"Caption:\n{caption_text}\nTranscript:\n{transcript_text}\n\n"
+        inserting_segments[index]["transcript"] = transcript_text
         inserting_segments[index]["frame_times"] = segment_times_info[index]["frame_times"].tolist()
     return inserting_segments
 
