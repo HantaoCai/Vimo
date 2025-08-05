@@ -88,9 +88,6 @@ class VideoRAG:
     tongyi_api_key: str = None  # 添加通义千问API密钥
     tongyi_base_url: str = None  # 添加通义千问基础URL
 
-    openai_api_key: str = None
-    openai_base_url: str = None
-
     # text chunking
     chunk_func: Callable[
         [
@@ -110,7 +107,7 @@ class VideoRAG:
     entity_summary_to_max_tokens: int = 500
 
     # Change to your LLM provider
-    llm: LLMConfig = field(default_factory=openai_4o_mini_config)
+    llm: LLMConfig = field(default_factory=tongyi_config)
     
     # entity extraction
     entity_extraction_func: callable = extract_entities
@@ -141,8 +138,6 @@ class VideoRAG:
         assert self.asr_model is not None, "asr_model is required"
         assert self.tongyi_api_key is not None, "tongyi_api_key is required"  # 添加通义千问API密钥检查
         assert self.tongyi_base_url is not None, "tongyi_base_url is required"  # 添加通义千问基础URL检查
-        assert self.openai_api_key is not None, "openai_api_key is required"
-        assert self.openai_base_url is not None, "openai_base_url is required"
 
         # Create working directory if it doesn't exist
         if not os.path.exists(self.working_dir) and self.always_create_working_dir:
@@ -194,8 +189,6 @@ class VideoRAG:
             "asr_model": self.asr_model,
             "tongyi_api_key": self.tongyi_api_key,  # 添加通义千问API密钥
             "tongyi_base_url": self.tongyi_base_url,  # 添加通义千问基础URL
-            "openai_api_key": self.openai_api_key,
-            "openai_base_url": self.openai_base_url,
             "chunk_func": self.chunk_func,
             "chunk_token_size": self.chunk_token_size,
             "tiktoken_model_name": self.tiktoken_model_name,
