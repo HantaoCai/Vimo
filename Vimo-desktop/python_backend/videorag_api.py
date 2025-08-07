@@ -868,6 +868,10 @@ def create_app():
     
     return app
 
+# Global dictionary for tracking upload status
+UPLOAD_STATUS = {}
+
+
 def register_routes(app):
     """Register all routes to Flask application"""
     
@@ -878,31 +882,54 @@ def register_routes(app):
 
     @app.route('/api/upload/video', methods=['POST'])
     def upload_video_file():
-        """Upload video file to server"""
+        """Upload video file to server and track progress"""
+        upload_id = request.args.get('upload_id')
+        if not upload_id:
+            return jsonify({"success": False, "error": "upload_id query parameter is required"}), 400
+
         try:
             if 'file' not in request.files:
-                return jsonify({
-                    "success": False,
-                    "error": "No file provided"
-                }), 400
-            
+                return jsonify({"success": False, "error": "No file part in request"}), 400
+
             file = request.files['file']
             if file.filename == '':
-                return jsonify({
-                    "success": False,
-                    "error": "No file selected"
-                }), 400
+                return jsonify({"success": False, "error": "No file selected"}), 400
             
-            # Create upload directory
+            # Seek to the end of the file to get its size, then back to the start
+            file.seek(0, os.SEEK_END)
+            total_size = file.tell()
+            file.seek(0)
+            
             upload_dir = '/home/ubuntu/projects/videorag/videos'
             os.makedirs(upload_dir, exist_ok=True)
             
-            # Save file
             filename = file.filename
             file_path = os.path.join(upload_dir, filename)
-            file.save(file_path)
+            temp_file_path = file_path + ".tmp"
             
-            log_to_file(f"📁 Video uploaded: {file_path}")
+            UPLOAD_STATUS[upload_id] = {
+                "filename": filename,
+                "total_size": total_size,
+                "uploaded_size": 0,
+                "status": "uploading"
+            }
+            log_to_file(f"⬆️ Starting upload for {upload_id}: {filename} ({total_size} bytes)")
+
+            uploaded_size = 0
+            with open(temp_file_path, 'wb') as f:
+                while True:
+                    # Read the file in chunks
+                    chunk = file.stream.read(8192) # 8KB chunks
+                    if not chunk:
+                        break
+                    f.write(chunk)
+                    uploaded_size += len(chunk)
+                    UPLOAD_STATUS[upload_id]['uploaded_size'] = uploaded_size
+            
+            os.rename(temp_file_path, file_path)
+            
+            UPLOAD_STATUS[upload_id]['status'] = 'completed'
+            log_to_file(f"✅ Upload completed for {upload_id}: {file_path}")
             
             return jsonify({
                 "success": True,
@@ -912,11 +939,26 @@ def register_routes(app):
             })
             
         except Exception as e:
-            log_to_file(f"❌ Upload error: {str(e)}")
+            log_to_file(f"❌ Upload error for {upload_id}: {str(e)}")
+            if upload_id in UPLOAD_STATUS:
+                UPLOAD_STATUS[upload_id]['status'] = 'error'
+                UPLOAD_STATUS[upload_id]['error'] = str(e)
+            
+            if 'temp_file_path' in locals() and os.path.exists(temp_file_path):
+                os.remove(temp_file_path)
+            
             return jsonify({
                 "success": False,
                 "error": f"Upload error: {str(e)}"
             }), 500
+    
+    @app.route('/api/upload/status/<upload_id>', methods=['GET'])
+    def get_upload_status(upload_id):
+        """Get upload status for a given upload ID"""
+        status = UPLOAD_STATUS.get(upload_id)
+        if not status:
+            return jsonify({"success": False, "status": "not_found"}), 404
+        return jsonify({"success": True, "status": status})
 
     @app.route('/api/video/duration', methods=['POST'])
     def get_video_duration():
